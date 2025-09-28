@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Budget Wise</title>
+  <style>
+    :root{
+      --bg:#ffffff; --card:#f0f4ff; --muted:#4b5563; --accent:#1d4ed8; --good:#10b981; --bad:#ef4444;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%; margin:0; background:var(--bg); color:#1f2937}
+    .app{display:grid; grid-template-columns:1fr; gap:18px; padding:18px; box-sizing:border-box}
+    .panel{background:var(--card); border-radius:12px; padding:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08); border:1px solid rgba(0,0,0,0.05)}
+    header.panel{display:flex; flex-direction:column; gap:12px}
+    h1{font-size:24px; margin:0; text-align:center}
+    .balance{display:flex; gap:12px; align-items:center; justify-content:center}
+    .balance .amount{font-weight:700; font-size:20px; color:var(--accent)}
+    .controls{display:flex; gap:8px; justify-content:center; flex-wrap:wrap}
+    input[type=number], input[type=text], input[type=date], select, button{padding:8px 10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1); font-size:14px}
+    button{background:var(--accent); color:white; cursor:pointer; border:none}
+    button:hover{opacity:0.9}
+    .ledger-boxes{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin-top:12px}
+    .box{background:white; border:1px solid rgba(0,0,0,0.1); border-radius:10px; padding:10px; box-shadow:0 2px 8px rgba(0,0,0,0.05); display:flex; flex-direction:column; gap:6px}
+    .box .desc{font-weight:600; color:#1d4ed8}
+    .box .amt{font-weight:700; font-size:16px}
+    .box .date{font-size:12px; color:#6b7280}
+    .box .tag{font-size:12px; padding:2px 6px; border-radius:6px; display:inline-block}
+    .tag.expense{background:rgba(239,68,68,0.15); color:#ef4444}
+    .tag.income{background:rgba(16,185,129,0.15); color:#10b981}
+    .tag.saving{background:rgba(29,78,216,0.15); color:#1d4ed8}
+    .box button{background:red; font-size:12px; padding:4px; margin-top:4px}
+    @media (max-width:600px){.ledger-boxes{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="panel">
+      <h1>Budget Wise</h1>
+      <div class="balance">
+        <div class="muted">Wallet balance:</div>
+        <div class="amount" id="walletDisplay">₱0.00</div>
+      </div>
+      <div class="controls">
+        <button id="homeBtn">Home</button>
+        <button id="addBudgetBtn">Add Budget</button>
+        <button id="addBalanceBtn">Add Balance</button>
+      </div>
+    </header>
+
+    <section class="panel" id="homeSection">
+      <h2>Ledger / Budgets</h2>
+      <div class="ledger-boxes" id="ledgerBoxes"></div>
+    </section>
+
+    <section class="panel" id="budgetSection" style="display:none">
+      <h2>Add Budget</h2>
+      <div class="form-row">
+        <input id="desc" type="text" placeholder="What for? (e.g., Groceries / Rent)" />
+        <input id="amt" type="number" step="0.01" placeholder="Amount (₱)" />
+        <input id="due" type="date" />
+        <select id="tag"><option value="expense">Expense</option><option value="income">Income</option><option value="saving">Saving</option></select>
+        <button id="addBtn">Add</button>
+      </div>
+      <button id="backFromBudget">Back</button>
+    </section>
+
+    <section class="panel" id="balanceSection" style="display:none">
+      <h2>Add Balance</h2>
+      <div class="form-row">
+        <input id="addBalAmt" type="number" step="0.01" placeholder="Amount (₱)" />
+        <button id="addBalBtn">Add to Wallet</button>
+      </div>
+      <button id="backFromBalance">Back</button>
+    </section>
+  </div>
+
+  <script>
+    const walletDisplay = document.getElementById('walletDisplay');
+    const ledgerBoxes = document.getElementById('ledgerBoxes');
+    const desc = document.getElementById('desc');
+    const amt = document.getElementById('amt');
+    const due = document.getElementById('due');
+    const tag = document.getElementById('tag');
+    const addBtn = document.getElementById('addBtn');
+    const addBalAmt = document.getElementById('addBalAmt');
+    const addBalBtn = document.getElementById('addBalBtn');
+
+    const homeSection = document.getElementById('homeSection');
+    const budgetSection = document.getElementById('budgetSection');
+    const balanceSection = document.getElementById('balanceSection');
+    const homeBtn = document.getElementById('homeBtn');
+    const addBudgetBtn = document.getElementById('addBudgetBtn');
+    const addBalanceBtn = document.getElementById('addBalanceBtn');
+    const backFromBudget = document.getElementById('backFromBudget');
+    const backFromBalance = document.getElementById('backFromBalance');
+
+    let state = {wallet:0, entries:[]};
+
+    function moneyFmt(v){ return '₱'+(Number(v)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+    function save(){
+      localStorage.setItem('bw_wallet', state.wallet);
+      localStorage.setItem('bw_entries', JSON.stringify(state.entries));
+    }
+
+    function load(){
+      state.wallet = parseFloat(localStorage.getItem('bw_wallet'))||0;
+      state.entries = JSON.parse(localStorage.getItem('bw_entries')||'[]');
+      render();
+    }
+
+    function render(){
+      walletDisplay.textContent = moneyFmt(state.wallet);
+      ledgerBoxes.innerHTML = '';
+      state.entries.forEach((row, idx)=>{
+        const box = document.createElement('div');
+        box.className = 'box';
+        box.innerHTML = `<div class='desc'>${row.desc}</div>
+                         <div class='amt'>${moneyFmt(row.amount)}</div>
+                         <div class='date'>${row.date||'-'}</div>
+                         <div class='tag ${row.tag}'>${row.tag}</div>
+                         <button data-idx='${idx}'>Delete</button>`;
+        ledgerBoxes.appendChild(box);
+        box.querySelector('button').addEventListener('click', ()=>{
+          const removed = state.entries.splice(idx,1)[0];
+          if(removed.tag==='expense') state.wallet += removed.amount;
+          else if(removed.tag==='income') state.wallet -= removed.amount;
+          save(); render();
+        });
+      });
+    }
+
+    addBtn.addEventListener('click', ()=>{
+      const d = desc.value.trim(); const a = parseFloat(amt.value)||0; const da = due.value; const tg = tag.value;
+      if(!d || !a){ alert('Please add description and amount'); return; }
+      const entry={desc:d,amount:a,date:da,tag:tg,id:Date.now()};
+      state.entries.unshift(entry);
+      if(tg==='expense') state.wallet -= a;
+      else if(tg==='income') state.wallet += a;
+      save(); render();
+      desc.value=''; amt.value=''; due.value=''; tag.value='expense';
+      homeSection.style.display='block'; budgetSection.style.display='none';
+    });
+
+    addBalBtn.addEventListener('click', ()=>{
+      const a = parseFloat(addBalAmt.value)||0;
+      state.wallet += a;
+      save(); render();
+      addBalAmt.value='';
+      homeSection.style.display='block'; balanceSection.style.display='none';
+    });
+
+    homeBtn.addEventListener('click', ()=>{homeSection.style.display='block'; budgetSection.style.display='none'; balanceSection.style.display='none';});
+    addBudgetBtn.addEventListener('click', ()=>{homeSection.style.display='none'; budgetSection.style.display='block'; balanceSection.style.display='none';});
+    addBalanceBtn.addEventListener('click', ()=>{homeSection.style.display='none'; budgetSection.style.display='none'; balanceSection.style.display='block';});
+    backFromBudget.addEventListener('click', ()=>{homeSection.style.display='block'; budgetSection.style.display='none';});
+    backFromBalance.addEventListener('click', ()=>{homeSection.style.display='block'; balanceSection.style.display='none';});
+
+    load();
+  </script>
+</body>
+</html>
